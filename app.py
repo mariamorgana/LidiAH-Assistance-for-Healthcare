@@ -2,7 +2,7 @@ import streamlit as st
 
 st.title('Meu primeiro app😍')
 
-st.header('Vamos fazer algo vom interatividade')
+st.header('Vamos fazer algo com interatividade')
 
 n = st.number_input('Entre com seu número')
 
