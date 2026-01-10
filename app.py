@@ -24,10 +24,10 @@ def carregar_dados_antibioticos():
 # --- SEGURANÇA ---
 SENHA_ADMIN = st.secrets.get("SENHA_PAINEL", "nefro123") 
 
-# --- SIDEBAR (Controle Específico do Painel) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("🔐 Admin (Apenas Mapa)")
-    st.caption("Insira a senha para editar o fluxo. A calculadora permanece liberada.")
+    st.caption("Insira a senha para editar o fluxo.")
     
     senha_input = st.text_input("Senha de Acesso:", type="password")
     
@@ -38,12 +38,17 @@ with st.sidebar:
         modo_edicao = False
         
     st.markdown("---")
+    
+    # BOTÃO DE EMERGÊNCIA (Para limpar o cache antigo)
+    if st.button("🗑️ Resetar Painel (Limpar Memória)", type="primary"):
+        st.session_state.clear()
+        st.rerun()
 
 # --- CRIAÇÃO DAS ABAS ---
 tab_painel, tab_calc = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico"])
 
 # ==============================================================================
-# ABA 1: PAINEL DE FLUXO
+# ABA 1: PAINEL DE FLUXO (NOVA VARIÁVEL)
 # ==============================================================================
 with tab_painel:
     col_title, col_status = st.columns([3, 1])
@@ -55,9 +60,9 @@ with tab_painel:
         else:
             st.info("🔒 Modo Leitura")
     
-    # 1. Dados (Cache no Session State)
-    if 'dados_aeroporto_v3' not in st.session_state: # Mudei a chave para limpar cache antigo
-        st.session_state.dados_aeroporto_v3 = pd.DataFrame([
+    # 1. Dados (USANDO NOME NOVO PARA FORÇAR ATUALIZAÇÃO)
+    if 'dados_fluxo_final' not in st.session_state: 
+        st.session_state.dados_fluxo_final = pd.DataFrame([
             {"Prontuário": "10234", "Setor": "UTI Geral", "Leito": "05", "Hora Prevista": "08:00", "Status": "Em Diálise"},
             {"Prontuário": "98421", "Setor": "Ambulatório", "Leito": "M01", "Hora Prevista": "09:30", "Status": "Aguardando"},
             {"Prontuário": "45123", "Setor": "Enfermaria", "Leito": "302A", "Hora Prevista": "10:00", "Status": "Previsto"},
@@ -76,7 +81,7 @@ with tab_painel:
             color, font_color = '#e2e3e5', '#6c757d' # Cinza
         return f'background-color: {color}; color: {font_color}; font-weight: bold;'
 
-    # 3. Configuração de Colunas
+    # 3. Configuração de Colunas (SEM PACIENTE)
     config_colunas = {
         "Prontuário": st.column_config.TextColumn("Prontuário", width="medium"),
         "Setor": st.column_config.SelectboxColumn("Setor", width="medium", options=["Ambulatório", "UTI Geral", "UTI Cardio", "Enfermaria", "Emergência"], required=True),
@@ -89,20 +94,25 @@ with tab_painel:
     if modo_edicao:
         st.caption("🛠️ Edite os dados diretamente na tabela.")
         df_editado = st.data_editor(
-            st.session_state.dados_aeroporto_v3,
+            st.session_state.dados_fluxo_final,
             column_config=config_colunas,
             hide_index=True,
             num_rows="dynamic",
             use_container_width=True,
-            key="editor_aeroporto_admin"
+            key="editor_aeroporto_final"
         )
-        st.session_state.dados_aeroporto_v3 = df_editado
+        st.session_state.dados_fluxo_final = df_editado
         
         if st.button("Salvar Alterações"):
             st.rerun() 
     else:
         st.caption("👁️ Exibição pública.")
-        df_colorido = st.session_state.dados_aeroporto_v3.style.map(colorir_status, subset=['Status'])
+        # Verifica se existe coluna antiga por segurança
+        df_safe = st.session_state.dados_fluxo_final.copy()
+        if "Paciente" in df_safe.columns:
+             df_safe = df_safe.drop(columns=["Paciente"])
+
+        df_colorido = df_safe.style.map(colorir_status, subset=['Status'])
         st.dataframe(
             df_colorido,
             column_config=config_colunas,
@@ -114,16 +124,18 @@ with tab_painel:
     st.markdown("---")
     
     # Métricas
-    da = st.session_state.dados_aeroporto_v3
+    da = st.session_state.dados_fluxo_final
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📅 Previstos", len(da[da['Status'] == 'Previsto']))
-    k2.metric("⚠️ Aguardando", len(da[da['Status'] == 'Aguardando']))
-    k3.metric("🟢 Em Diálise", len(da[da['Status'] == 'Em Diálise']))
-    k4.metric("🏁 Finalizados", len(da[da['Status'] == 'Finalizado']))
+    # Proteção contra erro se a coluna Status não existir
+    if 'Status' in da.columns:
+        k1.metric("📅 Previstos", len(da[da['Status'] == 'Previsto']))
+        k2.metric("⚠️ Aguardando", len(da[da['Status'] == 'Aguardando']))
+        k3.metric("🟢 Em Diálise", len(da[da['Status'] == 'Em Diálise']))
+        k4.metric("🏁 Finalizados", len(da[da['Status'] == 'Finalizado']))
 
 
 # ==============================================================================
-# ABA 2: CALCULADORA (CORRIGIDA COM HORÁRIO DETALHADO)
+# ABA 2: CALCULADORA COMPLETA
 # ==============================================================================
 with tab_calc:
     df_meds = carregar_dados_antibioticos()
@@ -170,7 +182,6 @@ with tab_calc:
     bsa = calcular_bsa(peso, altura)
     egfr_absoluto = egfr_norm * (bsa / 1.73)
 
-    # Exibição dos Resultados
     col_res1, col_res2 = st.columns([1, 2])
     
     with col_res1:
@@ -181,32 +192,25 @@ with tab_calc:
     with col_res2:
         if med_selecionado and not df_meds.empty:
             dados = df_meds[df_meds['Medicamento'] == med_selecionado].iloc[0]
-            
             st.subheader(f"💊 {dados['Medicamento']}")
             
-            # Cálculo de horários
             inicio_dt = datetime.combine(datetime.today(), hora_hd)
             termino_dt = inicio_dt + timedelta(hours=duracao)
             is_dialisavel = "Não" not in dados['Dialisavel'] and "Minimamente" not in dados['Dialisavel']
             
-            # --- BLOCO 1: AJUSTE DE DOSE ---
+            # BLOCO 1
             st.markdown("##### 1. Ajuste de Dose")
             st.info(f"{dados['Ajuste_Hemodialise']}")
-            
-            # Mostra suplementação se houver informação
             if pd.notna(dados.get('Suplementacao_Pos_HD')) and str(dados.get('Suplementacao_Pos_HD')) != "nan":
                 st.write(f"**Suplementação:** {dados['Suplementacao_Pos_HD']}")
 
             st.markdown("---")
 
-            # --- BLOCO 2: HORÁRIO (CORRIGIDO PARA MOSTRAR TEXTO) ---
+            # BLOCO 2
             st.markdown("##### 2. Recomendação de Horário")
-            
-            # Exibe o texto oficial da base de dados
             if pd.notna(dados.get('Recomendacao_Horario')):
                 st.write(f"📝 **Diretriz:** {dados['Recomendacao_Horario']}")
             
-            # Exibe o cálculo e alerta visual
             if is_dialisavel:
                 st.warning(f"⚠️ **Atenção: Medicamento Dialisável**")
                 st.write(f"A sessão está prevista para terminar às **{termino_dt.strftime('%H:%M')}**.")
