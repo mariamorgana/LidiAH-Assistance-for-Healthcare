@@ -21,67 +21,80 @@ def carregar_dados_antibioticos():
     except FileNotFoundError:
         return pd.DataFrame()
 
-# --- SEGURANÇA (Senha simples) ---
-# Tenta pegar dos segredos do Streamlit, se não existir, usa padrão
+# --- SEGURANÇA ---
 SENHA_ADMIN = st.secrets.get("SENHA_PAINEL", "nefro123") 
 
-# --- SIDEBAR: Login de Admin ---
+# --- SIDEBAR (Controle Específico do Painel) ---
 with st.sidebar:
-    st.header("🔐 Área Restrita")
-    senha_input = st.text_input("Senha de Admin (Edição):", type="password")
+    st.header("🔐 Admin (Apenas Mapa)")
+    st.caption("Insira a senha para editar o fluxo. A calculadora permanece liberada.")
+    
+    senha_input = st.text_input("Senha de Acesso:", type="password")
     
     if senha_input == SENHA_ADMIN:
-        st.success("Modo Edição ATIVO")
         modo_edicao = True
+        st.success("Edição do Mapa: ATIVA")
     else:
-        st.info("Modo Visualização")
         modo_edicao = False
+        # Não mostramos mensagem de erro/aviso aqui para não poluir quando usar a calculadora
         
     st.markdown("---")
-    st.caption("Acesso para ajuste de fluxo.")
 
-# --- CRIAÇÃO DAS ABAS (Ordem Invertida Aqui) ---
-# Agora "Mapa de Fluxo" vem primeiro na lista
+# --- CRIAÇÃO DAS ABAS ---
 tab_painel, tab_calc = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico"])
 
 # ==============================================================================
-# ABA 1: PAINEL DE AEROPORTO (Agora é a primeira)
+# ABA 1: PAINEL DE FLUXO (Onde o modo leitura se aplica)
 # ==============================================================================
 with tab_painel:
+    
+    # Cabeçalho com Status de Segurança Específico desta aba
     col_title, col_status = st.columns([3, 1])
     with col_title:
         st.title("✈️ Mapeamento de Fluxo")
     with col_status:
+        # O aviso de bloqueio aparece SÓ AQUI
         if modo_edicao:
-            st.success("🔓 Edição Liberada")
+            st.success("🔓 Modo Edição")
         else:
-            st.info("🔒 Apenas Leitura")
+            st.info("🔒 Modo Leitura (Visualização)")
     
-    # --- 1. Inicialização do Banco de Dados Local ---
+    # --- 1. Dados (Estrutura) ---
     if 'dados_aeroporto' not in st.session_state:
         st.session_state.dados_aeroporto = pd.DataFrame([
-            {"Prontuário": "10234", "Paciente": "Maria Silva", "Setor": "UTI Geral", "Leito": "05", "Hora Prevista": "08:00", "Status": "Em Diálise"},
-            {"Prontuário": "98421", "Paciente": "João Santos", "Setor": "Ambulatório", "Leito": "M01", "Hora Prevista": "09:30", "Status": "Aguardando"},
-            {"Prontuário": "45123", "Paciente": "Ana Costa", "Setor": "Enfermaria", "Leito": "302A", "Hora Prevista": "10:00", "Status": "Previsto"},
+            {"Prontuário": "10234", "Setor": "UTI Geral", "Leito": "05", "Hora Prevista": "08:00", "Status": "Em Diálise"},
+            {"Prontuário": "98421", "Setor": "Ambulatório", "Leito": "M01", "Hora Prevista": "09:30", "Status": "Aguardando"},
+            {"Prontuário": "45123", "Setor": "Enfermaria", "Leito": "302A", "Hora Prevista": "10:00", "Status": "Previsto"},
         ])
 
-    # --- 2. Lógica de Exibição Condicional ---
-    
-    configuracao_colunas = {
-        "Prontuário": st.column_config.TextColumn("Prontuário", width="small"),
-        "Paciente": st.column_config.TextColumn("Nome do Paciente", width="medium"),
-        "Setor": st.column_config.SelectboxColumn("Setor de Origem", width="medium", options=["Ambulatório", "UTI Geral", "UTI Cardio", "Enfermaria", "Emergência", "Externo"], required=True),
-        "Leito": st.column_config.TextColumn("Leito/Poltrona", width="small"),
-        "Hora Prevista": st.column_config.TimeColumn("Horário Previsto", format="HH:mm", step=60),
-        "Status": st.column_config.SelectboxColumn("Status Atual", width="medium", options=["Previsto", "Aguardando", "Em Diálise", "Finalizado"], required=True),
+    # --- 2. Cores do Status (Apenas Visualização) ---
+    def colorir_status(val):
+        color, font_color = 'white', 'black'
+        if val == 'Em Diálise':
+            color, font_color = '#d1e7dd', '#0f5132' # Verde
+        elif val == 'Aguardando':
+            color, font_color = '#fff3cd', '#856404' # Amarelo
+        elif val == 'Previsto':
+            color, font_color = '#cff4fc', '#055160' # Azul
+        elif val == 'Finalizado':
+            color, font_color = '#e2e3e5', '#6c757d' # Cinza
+        return f'background-color: {color}; color: {font_color}; font-weight: bold;'
+
+    # --- 3. Configuração de Colunas ---
+    config_colunas = {
+        "Prontuário": st.column_config.TextColumn("Prontuário", width="medium"),
+        "Setor": st.column_config.SelectboxColumn("Setor", width="medium", options=["Ambulatório", "UTI Geral", "UTI Cardio", "Enfermaria", "Emergência"], required=True),
+        "Leito": st.column_config.TextColumn("Leito", width="small"),
+        "Hora Prevista": st.column_config.TimeColumn("Horário", format="HH:mm", step=60),
+        "Status": st.column_config.SelectboxColumn("Status", width="medium", options=["Previsto", "Aguardando", "Em Diálise", "Finalizado"], required=True),
     }
 
+    # --- 4. Lógica de Exibição (Editável vs Leitura) ---
     if modo_edicao:
-        # MODO EDITOR (COM SENHA)
-        st.caption("🛠️ Você está no modo administrador. Pode editar células e adicionar pacientes.")
+        st.caption("🛠️ Edite os dados diretamente na tabela.")
         df_editado = st.data_editor(
             st.session_state.dados_aeroporto,
-            column_config=configuracao_colunas,
+            column_config=config_colunas,
             hide_index=True,
             num_rows="dynamic",
             use_container_width=True,
@@ -89,40 +102,38 @@ with tab_painel:
         )
         st.session_state.dados_aeroporto = df_editado
         
-        if st.button("Salvar/Atualizar"):
+        if st.button("Salvar Alterações"):
             st.rerun()
             
     else:
-        # MODO LEITURA (SEM SENHA)
-        st.caption("👁️ Modo de visualização pública. Insira a senha na barra lateral para fazer alterações.")
+        # Modo Leitura: Tabela Colorida
+        st.caption("👁️ Exibição pública. Insira senha na lateral para alterar.")
+        df_colorido = st.session_state.dados_aeroporto.style.map(colorir_status, subset=['Status'])
         st.dataframe(
-            st.session_state.dados_aeroporto,
-            column_config=configuracao_colunas,
+            df_colorido,
+            column_config=config_colunas,
             hide_index=True,
-            use_container_width=True
+            use_container_width=True,
+            height=400
         )
 
     st.markdown("---")
-
-    # --- 3. Visão Geral (Métricas) ---
-    dados_atuais = st.session_state.dados_aeroporto
     
-    total_previsto = len(dados_atuais[dados_atuais['Status'] == 'Previsto'])
-    total_aguardando = len(dados_atuais[dados_atuais['Status'] == 'Aguardando'])
-    total_em_dialise = len(dados_atuais[dados_atuais['Status'] == 'Em Diálise'])
-    total_finalizado = len(dados_atuais[dados_atuais['Status'] == 'Finalizado'])
-    
+    # Métricas
+    da = st.session_state.dados_aeroporto
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📅 Previstos", total_previsto)
-    k2.metric("⚠️ Aguardando", total_aguardando)
-    k3.metric("🟢 Em Diálise", total_em_dialise)
-    k4.metric("🏁 Finalizados", total_finalizado)
+    k1.metric("📅 Previstos", len(da[da['Status'] == 'Previsto']))
+    k2.metric("⚠️ Aguardando", len(da[da['Status'] == 'Aguardando']))
+    k3.metric("🟢 Em Diálise", len(da[da['Status'] == 'Em Diálise']))
+    k4.metric("🏁 Finalizados", len(da[da['Status'] == 'Finalizado']))
 
 
 # ==============================================================================
-# ABA 2: CALCULADORA DE ANTIBIÓTICOS (Agora é a segunda)
+# ABA 2: CALCULADORA (SEMPRE LIBERADA)
 # ==============================================================================
 with tab_calc:
+    # Note que aqui NÃO HÁ verificação de senha.
+    
     df_meds = carregar_dados_antibioticos()
     
     with st.container():
