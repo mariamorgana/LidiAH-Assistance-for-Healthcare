@@ -44,94 +44,101 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
+# --- CONTROLE DE ABAS ---
+MOSTRAR_MAPA_FLUXO = False  # Mude para True para reexibir a aba "Mapa de Fluxo"
+
 # --- CRIAÇÃO DAS ABAS ---
-tab_painel, tab_calc = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico"])
+if MOSTRAR_MAPA_FLUXO:
+    tab_painel, tab_calc = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico"])
+else:
+    tab_calc, = st.tabs(["🧮 Calc. Antibiótico"])
 
 # ==============================================================================
 # ABA 1: PAINEL DE FLUXO (NOVA VARIÁVEL)
 # ==============================================================================
-with tab_painel:
-    col_title, col_status = st.columns([3, 1])
-    with col_title:
-        st.title("✈️ Mapeamento de Fluxo")
-    with col_status:
+if MOSTRAR_MAPA_FLUXO:
+    with tab_painel:
+        col_title, col_status = st.columns([3, 1])
+        with col_title:
+            st.title("✈️ Mapeamento de Fluxo")
+        with col_status:
+            if modo_edicao:
+                st.success("🔓 Modo Edição")
+            else:
+                st.info("🔒 Modo Leitura")
+
+        # 1. Dados (USANDO NOME NOVO PARA FORÇAR ATUALIZAÇÃO)
+        if 'dados_fluxo_final' not in st.session_state: 
+            st.session_state.dados_fluxo_final = pd.DataFrame([
+                {"Prontuário": "10234", "Setor": "UTI Geral", "Leito": "05", "Hora Prevista": "08:00", "Status": "Em Diálise"},
+                {"Prontuário": "98421", "Setor": "Ambulatório", "Leito": "M01", "Hora Prevista": "09:30", "Status": "Aguardando"},
+                {"Prontuário": "45123", "Setor": "Enfermaria", "Leito": "302A", "Hora Prevista": "10:00", "Status": "Previsto"},
+            ])
+
+        # 2. Cores do Status (Apenas Visualização)
+        def colorir_status(val):
+            color, font_color = 'white', 'black'
+            if val == 'Em Diálise':
+                color, font_color = '#d1e7dd', '#0f5132' # Verde
+            elif val == 'Aguardando':
+                color, font_color = '#fff3cd', '#856404' # Amarelo
+            elif val == 'Previsto':
+                color, font_color = '#cff4fc', '#055160' # Azul
+            elif val == 'Finalizado':
+                color, font_color = '#e2e3e5', '#6c757d' # Cinza
+            return f'background-color: {color}; color: {font_color}; font-weight: bold;'
+
+        # 3. Configuração de Colunas (SEM PACIENTE)
+        config_colunas = {
+            "Prontuário": st.column_config.TextColumn("Prontuário", width="medium"),
+            "Setor": st.column_config.SelectboxColumn("Setor", width="medium", options=["Ambulatório", "UTI Geral", "UTI Cardio", "Enfermaria", "Emergência"], required=True),
+            "Leito": st.column_config.TextColumn("Leito", width="small"),
+            "Hora Prevista": st.column_config.TimeColumn("Horário", format="HH:mm", step=60),
+            "Status": st.column_config.SelectboxColumn("Status", width="medium", options=["Previsto", "Aguardando", "Em Diálise", "Finalizado"], required=True),
+        }
+
+        # 4. Exibição
         if modo_edicao:
-            st.success("🔓 Modo Edição")
+            st.caption("🛠️ Edite os dados diretamente na tabela.")
+            df_editado = st.data_editor(
+                st.session_state.dados_fluxo_final,
+                column_config=config_colunas,
+                hide_index=True,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="editor_aeroporto_final"
+            )
+            st.session_state.dados_fluxo_final = df_editado
+
+            if st.button("Salvar Alterações"):
+                st.rerun() 
         else:
-            st.info("🔒 Modo Leitura")
-    
-    # 1. Dados (USANDO NOME NOVO PARA FORÇAR ATUALIZAÇÃO)
-    if 'dados_fluxo_final' not in st.session_state: 
-        st.session_state.dados_fluxo_final = pd.DataFrame([
-            {"Prontuário": "10234", "Setor": "UTI Geral", "Leito": "05", "Hora Prevista": "08:00", "Status": "Em Diálise"},
-            {"Prontuário": "98421", "Setor": "Ambulatório", "Leito": "M01", "Hora Prevista": "09:30", "Status": "Aguardando"},
-            {"Prontuário": "45123", "Setor": "Enfermaria", "Leito": "302A", "Hora Prevista": "10:00", "Status": "Previsto"},
-        ])
+            st.caption("👁️ Exibição pública.")
+            # Verifica se existe coluna antiga por segurança
+            df_safe = st.session_state.dados_fluxo_final.copy()
+            if "Paciente" in df_safe.columns:
+                 df_safe = df_safe.drop(columns=["Paciente"])
 
-    # 2. Cores do Status (Apenas Visualização)
-    def colorir_status(val):
-        color, font_color = 'white', 'black'
-        if val == 'Em Diálise':
-            color, font_color = '#d1e7dd', '#0f5132' # Verde
-        elif val == 'Aguardando':
-            color, font_color = '#fff3cd', '#856404' # Amarelo
-        elif val == 'Previsto':
-            color, font_color = '#cff4fc', '#055160' # Azul
-        elif val == 'Finalizado':
-            color, font_color = '#e2e3e5', '#6c757d' # Cinza
-        return f'background-color: {color}; color: {font_color}; font-weight: bold;'
+            df_colorido = df_safe.style.map(colorir_status, subset=['Status'])
+            st.dataframe(
+                df_colorido,
+                column_config=config_colunas,
+                hide_index=True,
+                use_container_width=True,
+                height=400
+            )
 
-    # 3. Configuração de Colunas (SEM PACIENTE)
-    config_colunas = {
-        "Prontuário": st.column_config.TextColumn("Prontuário", width="medium"),
-        "Setor": st.column_config.SelectboxColumn("Setor", width="medium", options=["Ambulatório", "UTI Geral", "UTI Cardio", "Enfermaria", "Emergência"], required=True),
-        "Leito": st.column_config.TextColumn("Leito", width="small"),
-        "Hora Prevista": st.column_config.TimeColumn("Horário", format="HH:mm", step=60),
-        "Status": st.column_config.SelectboxColumn("Status", width="medium", options=["Previsto", "Aguardando", "Em Diálise", "Finalizado"], required=True),
-    }
+        st.markdown("---")
 
-    # 4. Exibição
-    if modo_edicao:
-        st.caption("🛠️ Edite os dados diretamente na tabela.")
-        df_editado = st.data_editor(
-            st.session_state.dados_fluxo_final,
-            column_config=config_colunas,
-            hide_index=True,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="editor_aeroporto_final"
-        )
-        st.session_state.dados_fluxo_final = df_editado
-        
-        if st.button("Salvar Alterações"):
-            st.rerun() 
-    else:
-        st.caption("👁️ Exibição pública.")
-        # Verifica se existe coluna antiga por segurança
-        df_safe = st.session_state.dados_fluxo_final.copy()
-        if "Paciente" in df_safe.columns:
-             df_safe = df_safe.drop(columns=["Paciente"])
-
-        df_colorido = df_safe.style.map(colorir_status, subset=['Status'])
-        st.dataframe(
-            df_colorido,
-            column_config=config_colunas,
-            hide_index=True,
-            use_container_width=True,
-            height=400
-        )
-
-    st.markdown("---")
-    
-    # Métricas
-    da = st.session_state.dados_fluxo_final
-    k1, k2, k3, k4 = st.columns(4)
-    # Proteção contra erro se a coluna Status não existir
-    if 'Status' in da.columns:
-        k1.metric("📅 Previstos", len(da[da['Status'] == 'Previsto']))
-        k2.metric("⚠️ Aguardando", len(da[da['Status'] == 'Aguardando']))
-        k3.metric("🟢 Em Diálise", len(da[da['Status'] == 'Em Diálise']))
-        k4.metric("🏁 Finalizados", len(da[da['Status'] == 'Finalizado']))
+        # Métricas
+        da = st.session_state.dados_fluxo_final
+        k1, k2, k3, k4 = st.columns(4)
+        # Proteção contra erro se a coluna Status não existir
+        if 'Status' in da.columns:
+            k1.metric("📅 Previstos", len(da[da['Status'] == 'Previsto']))
+            k2.metric("⚠️ Aguardando", len(da[da['Status'] == 'Aguardando']))
+            k3.metric("🟢 Em Diálise", len(da[da['Status'] == 'Em Diálise']))
+            k4.metric("🏁 Finalizados", len(da[da['Status'] == 'Finalizado']))
 
 
 # ==============================================================================
