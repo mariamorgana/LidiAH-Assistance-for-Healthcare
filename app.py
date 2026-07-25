@@ -49,9 +49,9 @@ MOSTRAR_MAPA_FLUXO = False  # Mude para True para reexibir a aba "Mapa de Fluxo"
 
 # --- CRIAÇÃO DAS ABAS ---
 if MOSTRAR_MAPA_FLUXO:
-    tab_painel, tab_calc = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico"])
+    tab_painel, tab_calc, tab_hipo = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico", "🚨 Hiponatremia Aguda"])
 else:
-    tab_calc, = st.tabs(["🧮 Calc. Antibiótico"])
+    tab_calc, tab_hipo = st.tabs(["🧮 Calc. Antibiótico", "🚨 Hiponatremia Aguda"])
 
 # ==============================================================================
 # ABA 1: PAINEL DE FLUXO (NOVA VARIÁVEL)
@@ -225,3 +225,216 @@ with tab_calc:
             else:
                 st.success(f"✅ **Seguro na Diálise**")
                 st.info("Pode ser administrado antes ou durante a sessão sem perda de eficácia.")
+
+# ==============================================================================
+# ABA 3: MANEJO AGUDO DA HIPONATREMIA GRAVE
+# ==============================================================================
+with tab_hipo:
+    st.title("🚨 Manejo Agudo da Hiponatremia Grave")
+    st.caption(
+        "Baseado em: Adrogué HJ et al. JAMA. 2022;328(3):280-291 (doi:10.1001/jama.2022.11176) "
+        "e Sterns RH et al. CJASN. 2024;19:129-135 — 'Stay the Course' (doi:10.2215/CJN.0000000000000244)."
+    )
+    st.warning(
+        "⚕️ Ferramenta de **apoio à decisão clínica**. Não substitui o julgamento médico. "
+        "Sempre correlacionar com o quadro clínico completo, volemia, etiologia e protocolos institucionais."
+    )
+
+    if 'hipo_caso' not in st.session_state:
+        st.session_state.hipo_caso = None
+
+    # ==========================================================================
+    # INICIAR NOVO CASO
+    # ==========================================================================
+    if st.session_state.hipo_caso is None:
+        st.subheader("1️⃣ Novo Caso — Avaliação Inicial")
+
+        sodio_inicial = st.number_input(
+            "Sódio sérico inicial (mEq/L):", 90.0, 134.0, 118.0, 0.5, key="hipo_sodio_ini"
+        )
+
+        st.write("**Sintomas neurológicos / clínicos:**")
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            s_graves = st.multiselect(
+                "🔴 Sintomas graves (risco iminente):",
+                ["Sonolência / rebaixamento do nível de consciência", "Convulsões",
+                 "Coma", "Desconforto cardiorrespiratório"],
+                key="hipo_sint_graves"
+            )
+        with col_s2:
+            s_moderados = st.multiselect(
+                "🟡 Sintomas moderadamente graves:",
+                ["Vômitos", "Confusão mental"],
+                key="hipo_sint_moderados"
+            )
+
+        alto_risco_complicacao = False
+        if s_moderados and not s_graves:
+            alto_risco_complicacao = st.checkbox(
+                "Paciente em alto risco de progressão para complicações com risco de morte?",
+                key="hipo_alto_risco_compl"
+            )
+
+        st.write("**Fatores de risco para síndrome de desmielinização osmótica (mielinólise):**")
+        fatores = st.multiselect(
+            "Selecione os fatores presentes:",
+            ["Transtorno por uso de álcool", "Hipopotassemia grave", "Desnutrição", "Hepatopatia avançada"],
+            key="hipo_fatores_risco"
+        )
+        if sodio_inicial <= 105:
+            st.caption("🔺 Sódio ≤105 mEq/L: fator de risco adicionado automaticamente.")
+
+        if st.button("▶️ Iniciar Caso", type="primary", key="hipo_iniciar"):
+            risco_alto = (sodio_inicial <= 105) or (len(fatores) > 0)
+            st.session_state.hipo_caso = {
+                'sodio_inicial': sodio_inicial,
+                'sintomas_graves': s_graves,
+                'sintomas_moderados': s_moderados,
+                'alto_risco_complicacao': alto_risco_complicacao,
+                'fatores_risco': fatores,
+                'risco_alto_mielinolise': risco_alto,
+                'medidas': [{'horas': 0.0, 'sodio': sodio_inicial}],
+            }
+            st.rerun()
+
+    # ==========================================================================
+    # CASO ATIVO
+    # ==========================================================================
+    else:
+        caso = st.session_state.hipo_caso
+        risco_txt = "🔴 ALTO RISCO de mielinólise" if caso['risco_alto_mielinolise'] else "🟢 Risco padrão de mielinólise"
+        st.subheader(f"2️⃣ Caso Ativo — Sódio inicial: {caso['sodio_inicial']} mEq/L | {risco_txt}")
+
+        fatores_show = list(caso['fatores_risco'])
+        if caso['sodio_inicial'] <= 105:
+            fatores_show.append("Sódio ≤105 mEq/L")
+        if fatores_show:
+            st.caption("Fatores de risco para mielinólise: " + ", ".join(fatores_show))
+        if caso['sintomas_graves'] or caso['sintomas_moderados']:
+            st.caption("Sintomas: " + ", ".join(caso['sintomas_graves'] + caso['sintomas_moderados']))
+
+        emergencia = bool(caso['sintomas_graves']) or (bool(caso['sintomas_moderados']) and caso['alto_risco_complicacao'])
+
+        # ----- Conduta inicial -----
+        st.markdown("### 🩺 Conduta Recomendada")
+        if emergencia:
+            st.error("**TRATAMENTO DE EMERGÊNCIA — sintomas graves ou risco de complicação fatal**")
+            st.markdown("""
+- Salina hipertônica **3%** em **bolus**: 100–150 mL IV em 10–20 minutos.
+- Pode repetir até **2–3 vezes**, conforme necessário.
+- **Meta:** elevar o sódio sérico em **4–6 mEq/L dentro de 1–2 horas** (suficiente para reverter encefalopatia hiponatrêmica / hipertensão intracraniana).
+- Dosar o sódio sérico **após cada bolus**.
+- Considerar suporte de via aérea / UTI se rebaixamento do nível de consciência.
+- Suspender fluidos hipotônicos e fármacos que favoreçam hiponatremia (opioides, antidepressivos, etc.).
+""")
+        else:
+            st.info(
+                "Sem critérios de emergência no momento. Avaliar a causa de base (hipovolêmica, euvolêmica ou "
+                "hipervolêmica) e tratar conforme a etiologia. Monitorar sódio sérico periodicamente."
+            )
+
+        st.markdown("---")
+
+        # ----- Registrar nova medida -----
+        st.markdown("### 📈 Registrar Nova Dosagem de Sódio")
+        col1, col2 = st.columns(2)
+        ultima_hora_registrada = max(m['horas'] for m in caso['medidas'])
+        with col1:
+            nova_hora = st.number_input(
+                "Horas desde o início do tratamento:", 0.0, 240.0,
+                value=float(ultima_hora_registrada + 2), step=0.5, key="hipo_nova_hora"
+            )
+        with col2:
+            novo_sodio = st.number_input(
+                "Sódio sérico medido (mEq/L):", 90.0, 160.0, float(caso['sodio_inicial']), 0.5, key="hipo_novo_sodio"
+            )
+
+        if st.button("➕ Adicionar Medida", key="hipo_add_medida"):
+            caso['medidas'].append({'horas': nova_hora, 'sodio': novo_sodio})
+            caso['medidas'].sort(key=lambda m: m['horas'])
+            st.rerun()
+
+        # ----- Avaliação da taxa de correção -----
+        medidas = caso['medidas']
+        if len(medidas) > 1:
+            st.markdown("### 📊 Avaliação da Taxa de Correção")
+
+            def sodio_em(t_alvo, pontos):
+                """Interpola linearmente o sódio no tempo t_alvo (h) a partir das medidas registradas."""
+                pontos = sorted(pontos, key=lambda m: m['horas'])
+                if t_alvo <= pontos[0]['horas']:
+                    return pontos[0]['sodio']
+                if t_alvo >= pontos[-1]['horas']:
+                    return pontos[-1]['sodio']
+                for i in range(len(pontos) - 1):
+                    h0, h1 = pontos[i]['horas'], pontos[i + 1]['horas']
+                    if h0 <= t_alvo <= h1:
+                        s0, s1 = pontos[i]['sodio'], pontos[i + 1]['sodio']
+                        if h1 == h0:
+                            return s1
+                        frac = (t_alvo - h0) / (h1 - h0)
+                        return s0 + frac * (s1 - s0)
+                return pontos[-1]['sodio']
+
+            ultima = medidas[-1]
+            t_atual = ultima['horas']
+            sodio_atual = ultima['sodio']
+
+            delta_24h = sodio_atual - sodio_em(max(0.0, t_atual - 24), medidas)
+            delta_48h = sodio_atual - sodio_em(max(0.0, t_atual - 48), medidas)
+            delta_total = sodio_atual - caso['sodio_inicial']
+
+            limite_24h = 8 if caso['risco_alto_mielinolise'] else 10
+            limite_48h = 18
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Δ Total", f"{delta_total:+.1f} mEq/L")
+            c2.metric("Δ Últimas 24h", f"{delta_24h:+.1f} mEq/L", help=f"Limite: {limite_24h} mEq/L")
+            c3.metric("Δ Últimas 48h", f"{delta_48h:+.1f} mEq/L", help=f"Limite: {limite_48h} mEq/L")
+
+            # ----- Lógica de decisão -----
+            if delta_24h > limite_24h or delta_48h > limite_48h:
+                st.error(f"""
+🚨 **LIMITE DE CORREÇÃO EXCEDIDO** (>{limite_24h} mEq/L em 24h ou >{limite_48h} mEq/L em 48h)
+
+**Considerar religamento terapêutico (relowering):**
+- Interromper a solução salina hipertônica.
+- Considerar **desmopressina (DDAVP)** 2–4 mcg IV/SC a cada 6–8h.
+- Infundir **soro glicosado 5% (D5W)** para reduzir o sódio de volta à faixa de segurança.
+- Monitorar o sódio sérico a cada 2–4h até estabilização.
+{"- **Paciente de ALTO RISCO para mielinólise — atenção redobrada.**" if caso['risco_alto_mielinolise'] else ""}
+""")
+            elif delta_24h > limite_24h - 2 or delta_48h > limite_48h - 3:
+                st.warning(f"""
+⚠️ **Aproximando-se do limite de correção** (meta: ≤{limite_24h} mEq/L/24h; ≤{limite_48h} mEq/L/48h)
+
+- Considerar reduzir ou suspender a infusão de salina hipertônica.
+- Trocar para fluidos isotônicos ou hipotônicos conforme a causa de base, se aplicável.
+- Aumentar a frequência de monitorização do sódio sérico (a cada 2–4h).
+- Atenção à diurese aquosa espontânea (poliúria hipotônica) — causa mais comum de supercorreção.
+""")
+            elif emergencia and delta_total < 4 and t_atual <= 2:
+                st.warning("""
+⏳ **Meta inicial ainda não atingida** (objetivo: +4 a 6 mEq/L nas primeiras 1–2h em pacientes com sintomas graves).
+
+- Considerar repetir bolus de NaCl 3% (100–150 mL em 10–20 min), respeitando o máximo de 2–3 bolus.
+""")
+            else:
+                st.success(f"""
+✅ **Correção dentro da meta de segurança** (limite: {limite_24h} mEq/L/24h; {limite_48h} mEq/L/48h)
+
+- Manter monitorização do sódio sérico a cada 4–6h nas primeiras 24h.
+- Reavaliar sintomas clínicos e a causa de base da hiponatremia.
+""")
+
+            st.markdown("#### 🗂️ Histórico de Medidas")
+            df_medidas = pd.DataFrame(medidas).rename(
+                columns={'horas': 'Horas desde início', 'sodio': 'Sódio (mEq/L)'}
+            )
+            st.dataframe(df_medidas, hide_index=True, use_container_width=True)
+
+        st.markdown("---")
+        if st.button("🔚 Encerrar Caso e Iniciar Novo Paciente", type="secondary", key="hipo_encerrar"):
+            st.session_state.hipo_caso = None
+            st.rerun()
