@@ -252,7 +252,7 @@ with tab_calc:
     df_meds = carregar_dados_antibioticos()
     
     with st.container():
-        st.header("1. Dados Clínicos e Medicamento")
+        st.header("Dados Clínicos e Medicamento")
         col_input_1, col_input_2, col_input_3 = st.columns(3)
         
         with col_input_1:
@@ -263,8 +263,21 @@ with tab_calc:
         
         with col_input_2:
             creatinina = st.number_input("Creatinina (mg/dL):", 0.1, 20.0, 4.0, 0.1)
-            hora_hd = st.time_input("Início da Sessão:", value=datetime.strptime("08:00", "%H:%M").time())
-            duracao = st.slider("Duração (h):", 2.0, 5.0, 4.0, step=0.5)
+
+            st.markdown("**🩺 Terapia Dialítica**")
+            tipo_terapia = st.selectbox(
+                "Tipo de terapia:",
+                ["Hemodiálise (HD)", "SLEED", "Terapia Contínua (CRRT)"],
+                key="tipo_terapia"
+            )
+
+            if tipo_terapia in ["Hemodiálise (HD)", "SLEED"]:
+                hora_hd = st.time_input("Início da Sessão:", value=datetime.strptime("08:00", "%H:%M").time())
+                duracao = st.slider("Duração (h):", 2.0, 5.0, 4.0, step=0.5)
+            else:
+                hora_hd = None
+                duracao = None
+                st.info("ℹ️ Ajuste de horário para terapia contínua (CRRT) ainda não disponível nesta calculadora. Consulte a literatura/diretrizes específicas ou a farmácia clínica.")
             
         with col_input_3:
              if not df_meds.empty:
@@ -304,11 +317,9 @@ with tab_calc:
         if med_selecionado and not df_meds.empty:
             dados = df_meds[df_meds['Medicamento'] == med_selecionado].iloc[0]
             st.subheader(f"💊 {dados['Medicamento']}")
-            
-            inicio_dt = datetime.combine(datetime.today(), hora_hd)
-            termino_dt = inicio_dt + timedelta(hours=duracao)
+
             is_dialisavel = "Não" not in dados['Dialisavel'] and "Minimamente" not in dados['Dialisavel']
-            
+
             # BLOCO 1
             st.markdown("##### 1. Ajuste de Dose")
             st.info(f"{dados['Ajuste_Hemodialise']}")
@@ -321,8 +332,12 @@ with tab_calc:
             st.markdown("##### 2. Recomendação de Horário")
             if pd.notna(dados.get('Recomendacao_Horario')):
                 st.write(f"📝 **Diretriz:** {dados['Recomendacao_Horario']}")
-            
-            if is_dialisavel:
+
+            if hora_hd is None:
+                st.info("ℹ️ Recomendação de horário específica para terapia contínua (CRRT) ainda não disponível nesta calculadora. Consulte a literatura/diretrizes específicas ou a farmácia clínica.")
+            elif is_dialisavel:
+                inicio_dt = datetime.combine(datetime.today(), hora_hd)
+                termino_dt = inicio_dt + timedelta(hours=duracao)
                 st.warning(f"⚠️ **Atenção: Medicamento Dialisável**")
                 st.write(f"A sessão está prevista para terminar às **{termino_dt.strftime('%H:%M')}**.")
                 st.error(f"Administrar **APÓS** o término ({termino_dt.strftime('%H:%M')}) para evitar remoção.")
