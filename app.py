@@ -46,7 +46,26 @@ st.markdown("""
         border-bottom: 2px solid var(--lidiah-bg);
         margin-bottom: 20px;
     }
-    .lidiah-header img { height: 56px; }
+    .lidiah-header img { height: 110px; }
+
+    /* Logo na sidebar */
+    .lidiah-sidebar-logo { text-align: center; padding: 4px 0 16px 0; }
+    .lidiah-sidebar-logo img { width: 100%; max-width: 220px; }
+
+    /* Cartões de navegação na sidebar */
+    .lidiah-nav-titulo { color: var(--lidiah-navy); font-weight: 700; font-size: 0.95rem; margin: 4px 0 10px 0; }
+    .lidiah-nav-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background-color: var(--lidiah-bg);
+        border-left: 4px solid var(--lidiah-teal);
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 10px;
+    }
+    .lidiah-nav-card .nav-icon { font-size: 1.3rem; }
+    .lidiah-nav-card .nav-label { font-weight: 600; color: var(--lidiah-navy); font-size: 0.92rem; }
     .lidiah-header .lidiah-titulo { font-size: 1.05rem; color: var(--lidiah-navy); font-weight: 500; }
 
     /* Realce nas abas ativas com a cor da marca */
@@ -96,6 +115,21 @@ SENHA_ADMIN = st.secrets.get("SENHA_PAINEL", "nefro123")
 
 # --- SIDEBAR ---
 with st.sidebar:
+    if LOGO_B64:
+        st.markdown(f"""
+        <div class="lidiah-sidebar-logo">
+            <img src="data:image/png;base64,{LOGO_B64}" alt="LidiAH">
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<div class="lidiah-nav-titulo">🗂️ Ferramentas</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="lidiah-nav-card"><span class="nav-icon">🧮</span><span class="nav-label">Calc. Antibiótico</span></div>
+    <div class="lidiah-nav-card"><span class="nav-icon">💧</span><span class="nav-label">Hiponatremia</span></div>
+    """, unsafe_allow_html=True)
+    st.caption("Selecione a ferramenta nas abas no topo da página.")
+
+    st.markdown("---")
     st.header("🔐 Admin (Apenas Mapa)")
     st.caption("Insira a senha para editar o fluxo.")
     
