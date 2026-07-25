@@ -1,17 +1,87 @@
 import streamlit as st
 import pandas as pd
+import base64
+from pathlib import Path
 from datetime import datetime, timedelta
 
-# --- Configuração da Página ---
-st.set_page_config(page_title="HemoFlow Manager", page_icon="🏥", layout="wide")
+# --- IDENTIDADE VISUAL LIDIAH ---
+LOGO_PATH = Path(__file__).parent / "assets" / "logo_lidiah.png"
 
-# --- CSS Personalizado ---
+def carregar_logo_base64():
+    if LOGO_PATH.exists():
+        return base64.b64encode(LOGO_PATH.read_bytes()).decode()
+    return None
+
+LOGO_B64 = carregar_logo_base64()
+
+# --- Configuração da Página ---
+try:
+    from PIL import Image
+    icone_pagina = Image.open(LOGO_PATH) if LOGO_PATH.exists() else "🏥"
+except Exception:
+    icone_pagina = "🏥"
+
+st.set_page_config(page_title="LidiAH - Assistance for Healthcare", page_icon=icone_pagina, layout="wide")
+
+# --- CSS Personalizado (Identidade Visual LidiAH) ---
 st.markdown("""
 <style>
-    .metric-container { background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+    :root {
+        --lidiah-teal: #01ABB2;
+        --lidiah-teal-dark: #017A80;
+        --lidiah-navy: #454B5A;
+        --lidiah-coral: #F0665A;
+        --lidiah-bg: #F2F6F7;
+    }
+
+    .metric-container { background-color: var(--lidiah-bg); padding: 15px; border-radius: 8px; margin-bottom: 10px; }
     .stAlert { padding: 10px; border-radius: 5px; }
+
+    /* Cabeçalho com logo */
+    .lidiah-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 0 20px 0;
+        border-bottom: 2px solid var(--lidiah-bg);
+        margin-bottom: 20px;
+    }
+    .lidiah-header img { height: 56px; }
+    .lidiah-header .lidiah-titulo { font-size: 1.05rem; color: var(--lidiah-navy); font-weight: 500; }
+
+    /* Realce nas abas ativas com a cor da marca */
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: var(--lidiah-teal-dark) !important;
+        border-bottom-color: var(--lidiah-teal) !important;
+    }
+    button[data-baseweb="tab"] p { font-weight: 600; }
+
+    /* Sidebar com toque de marca */
+    section[data-testid="stSidebar"] h2 { color: var(--lidiah-navy); }
+
+    /* Botões primários */
+    button[kind="primary"] {
+        background-color: var(--lidiah-teal) !important;
+        border-color: var(--lidiah-teal) !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: var(--lidiah-teal-dark) !important;
+        border-color: var(--lidiah-teal-dark) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# --- Cabeçalho com Logo ---
+if LOGO_B64:
+    st.markdown(f"""
+    <div class="lidiah-header">
+        <img src="data:image/png;base64,{LOGO_B64}" alt="LidiAH">
+        <div class="lidiah-titulo">Ferramentas de apoio clínico para nefrologia e diálise</div>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("## 🏥 LidiAH — Assistance for Healthcare")
+    st.caption("Ferramentas de apoio clínico para nefrologia e diálise")
 
 # --- CARREGAMENTO DE DADOS (CACHE) ---
 @st.cache_data
@@ -49,9 +119,9 @@ MOSTRAR_MAPA_FLUXO = False  # Mude para True para reexibir a aba "Mapa de Fluxo"
 
 # --- CRIAÇÃO DAS ABAS ---
 if MOSTRAR_MAPA_FLUXO:
-    tab_painel, tab_calc, tab_hipo = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico", "🚨 Hiponatremia Aguda"])
+    tab_painel, tab_calc, tab_hipo = st.tabs(["✈️ Mapa de Fluxo (Aeroporto)", "🧮 Calc. Antibiótico", "💧 Hiponatremia"])
 else:
-    tab_calc, tab_hipo = st.tabs(["🧮 Calc. Antibiótico", "🚨 Hiponatremia Aguda"])
+    tab_calc, tab_hipo = st.tabs(["🧮 Calc. Antibiótico", "💧 Hiponatremia"])
 
 # ==============================================================================
 # ABA 1: PAINEL DE FLUXO (NOVA VARIÁVEL)
@@ -230,7 +300,7 @@ with tab_calc:
 # ABA 3: MANEJO AGUDO DA HIPONATREMIA GRAVE
 # ==============================================================================
 with tab_hipo:
-    st.title("🚨 Manejo Agudo da Hiponatremia Grave")
+    st.title("💧 Manejo Agudo da Hiponatremia")
     st.caption(
         "Baseado em: Adrogué HJ et al. JAMA. 2022;328(3):280-291 (doi:10.1001/jama.2022.11176) "
         "e Sterns RH et al. CJASN. 2024;19:129-135 — 'Stay the Course' (doi:10.2215/CJN.0000000000000244)."
